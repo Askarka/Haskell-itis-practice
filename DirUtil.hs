@@ -16,20 +16,15 @@ parseArgs argList = case argList of
     [arg1]       -> (arg1, Nothing)
     _            -> error "Incorrect arg list!"
 
-getDirectoryPaths :: (MonadReader (FilePath, Maybe Int) m, MonadIO m) => m [FilePath]
-getDirectoryPaths = do
-    args <- ask
-    case args of
-        (path, depth) -> getNestedDirs path depth
-    
 
-getNestedDirs :: (MonadIO m) => FilePath -> Maybe Int -> m [FilePath]
-getNestedDirs path depth = do 
+getNestedDirs :: (MonadReader (FilePath, Maybe Int) m, MonadIO m) => m [FilePath]
+getNestedDirs = do 
+    (path, depth) <- ask
     isDir <- liftIO $ doesDirectoryExist path
     if isDir 
         then do
             nestedPaths <- fmap (map (\dir ->joinPath [path, dir])) (liftIO $ listDirectory path)
-            let getNestedFilesForPaths d = forM nestedPaths (`getNestedDirs` d) in
+            let getNestedFilesForPaths d = forM nestedPaths (\nested -> local (const (nested, d)) getNestedDirs) in
                 case depth of
                     Nothing -> fmap (path:) $ concat <$> getNestedFilesForPaths Nothing
                     Just 0  -> pure [path]
@@ -70,6 +65,6 @@ printDirectoryInfo infos = do
 main :: IO ()
 main = do
     args <- getArgs
-    files <- runReaderT getDirectoryPaths (parseArgs args)
+    files <- runReaderT getNestedDirs (parseArgs args)
     filesInfo <- evalStateT getDirectoryInfo files
     printDirectoryInfo filesInfo
